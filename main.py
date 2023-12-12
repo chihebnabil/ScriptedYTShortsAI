@@ -5,7 +5,8 @@ import os
 from openai import OpenAI
 from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
 import os
-from format_video import reformat_video , merge_audio_video 
+from format_video import reformat_video , merge_audio_video
+import sys
 # Load environment variables
 load_dotenv()
 # Get API keys from environment variables
@@ -130,32 +131,36 @@ def generate_scenario(topic):
         return None
 
 
+# Check if the first argument as the topic exists
+if len(sys.argv) > 1:
+    topic = sys.argv[1]
+    response = generate_scenario(topic)
+    if response:
+        json_response = json.loads(response)
+        for scene in json_response['scenes']:
+            video_filename = download_videos_from_pexels(scene['keywords'])
+            generate_audio_from_text(scene['script'], scene['id'])
+            if video_filename:
+                scenes.append((video_filename, f"scene_{scene['id']}.mp3"))
+                print(f"Downloaded video for scene {scene['id']}: {video_filename}")
+            else:
+                print(f"Could not download video for scene {scene['id']}")
+        
+        merged_clips = []
+        for video_filename, audio_filename in scenes:
+            resized_video = reformat_video(video_filename)
+            merged_clip = merge_audio_video(audio_filename, resized_video)
+            merged_clips.append(VideoFileClip(merged_clip))
 
-response = generate_scenario("Mediterranean Delights: Top 5 Street Foods You Can't Miss")
-if response:
-    json_response = json.loads(response)
-    for scene in json_response['scenes']:
-        video_filename = download_videos_from_pexels(scene['keywords'])
-        generate_audio_from_text(scene['script'], scene['id'])
-        if video_filename:
-            scenes.append((video_filename, f"scene_{scene['id']}.mp3"))
-            print(f"Downloaded video for scene {scene['id']}: {video_filename}")
-        else:
-            print(f"Could not download video for scene {scene['id']}")
-    
-    merged_clips = []
-    for video_filename, audio_filename in scenes:
-        resized_video = reformat_video(video_filename)
-        merged_clip = merge_audio_video(audio_filename, resized_video)
-        merged_clips.append(VideoFileClip(merged_clip))
+        # Concatenate all the clips
+        final_clip = concatenate_videoclips(merged_clips, method="compose")
+        final_clip.write_videofile("final_youtube_short.mp4", codec="libx264", audio_codec="aac")
 
-    # Concatenate all the clips
-    final_clip = concatenate_videoclips(merged_clips, method="compose")
-    final_clip.write_videofile("final_youtube_short.mp4", codec="libx264", audio_codec="aac")
-
-    # Clean up
-    for clip in merged_clips:
-        os.remove(clip.filename)
+        # Clean up
+        for clip in merged_clips:
+            os.remove(clip.filename)
+else:
+    print("Please provide a topic as an argument")
 
 
 
