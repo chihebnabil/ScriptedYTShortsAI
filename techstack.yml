@@ -1,0 +1,31 @@
+repo_name: chihebnabil/ScriptedYTShortsAI
+report_id: 61566880740a30aebdc5f4a83c121383
+version: 0.1
+repo_type: Public
+timestamp: '2024-02-29T19:57:17+00:00'
+requested_by: chihebnabil
+provider: github
+branch: main
+detected_tools_count: 2
+tools:
+- name: Python
+  description: A clear and powerful object-oriented programming language, comparable
+    to Perl, Ruby, Scheme, or Java.
+  website_url: https://www.python.org
+  open_source: true
+  hosted_saas: false
+  category: Languages & Frameworks
+  sub_category: Languages
+  image_url: https://img.stackshare.io/service/993/pUBY5pVj.png
+  detection_source_url: https://github.com/chihebnabil/ScriptedYTShortsAI
+  detection_source: Repo Metadata
+- name: Git
+  description: Fast, scalable, distributed revision control system
+  website_url: http://git-scm.com/
+  open_source: true
+  hosted_saas: false
+  category: Build, Test, Deploy
+  sub_category: Version Control System
+  image_url: https://img.stackshare.io/service/1046/git.png
+  detection_source_url: https://github.com/chihebnabil/ScriptedYTShortsAI
+  detection_source: Repo Metadata
