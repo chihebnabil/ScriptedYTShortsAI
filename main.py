@@ -238,9 +238,3 @@ if len(sys.argv) > 1:
             os.remove(clip.filename)
 else:
     print("Please provide a topic as an argument")
-
-
-
-
-
-
