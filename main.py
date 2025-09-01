@@ -3,15 +3,23 @@ import json
 from dotenv import load_dotenv
 import os
 from openai import OpenAI
-from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
+from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip, ImageClip
 import os
 from format_video import reformat_video , merge_audio_video
 import sys
+
+# Fix for PIL.Image.ANTIALIAS compatibility issue
+try:
+    from PIL import Image
+    if not hasattr(Image, 'ANTIALIAS'):
+        Image.ANTIALIAS = Image.LANCZOS
+except ImportError:
+    pass
 # Load environment variables
 load_dotenv()
 # Get API keys from environment variables
 openai_api_key = os.getenv("OPEN_API_KEY")
-pexels_api_key = os.getenv("PEXELS_API_KEY")
+fal_api_key = os.getenv("FAL_API_KEY")
 elevenlabs_api_key = os.getenv("ELVEN_LABS_API_KEY")
 scenes = []
 
@@ -43,40 +51,98 @@ def generate_audio_from_text(text, scene_id, voice_id = "21m00Tcm4TlvDq8ikWAM"):
         print(f"Failed to generate audio for scene {scene_id}: {response.text}")
 
 
-def download_videos_from_pexels(keywords):
-    keywords = keywords.split(',')
-    for keyword in keywords:
-        video_filename = f'{keyword}.mp4'
-        # Check if the video already exists locally
-        if os.path.exists(video_filename):
-            print(f"Video for '{keyword}' already exists.")
-            return video_filename
-        # Make a request to the Pexels API
-        url = f'https://api.pexels.com/videos/search?query={keyword}&per_page=1'
-        headers = {'Authorization': pexels_api_key}
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 200:
-            data = response.json()
-            videos = data.get('videos', [])
-
-            if videos:
-                video_url = videos[0]['video_files'][0]['link']
-                return download_video(video_url, keyword)
+def generate_images_from_fal(keywords, scene_id):
+    """Generate images using Fal API with Flux Schnell model"""
+    keywords_list = keywords.split(',')
+    generated_images = []
+    
+    for i, keyword in enumerate(keywords_list):
+        keyword = keyword.strip()
+        if not keyword:
+            continue
+            
+        # Create a more detailed prompt for better image generation
+        prompt = f"High quality, cinematic, professional photograph of {keyword}, detailed, realistic, good lighting"
+        
+        url = "https://fal.run/fal-ai/flux/schnell"
+        
+        payload = {
+            "prompt": prompt,
+            "image_size": "portrait_16_9",
+            "num_inference_steps": 4,
+            "enable_safety_checker": True
+        }
+        
+        headers = {
+            "Authorization": f"Key {fal_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.post(url, json=payload, headers=headers)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if 'images' in result and len(result['images']) > 0:
+                    image_url = result['images'][0]['url']
+                    
+                    # Download the generated image
+                    image_response = requests.get(image_url)
+                    if image_response.status_code == 200:
+                        filename = f'scene_{scene_id}_image_{i}.jpg'
+                        with open(filename, 'wb') as f:
+                            f.write(image_response.content)
+                        generated_images.append(filename)
+                        print(f"Generated image for '{keyword}': {filename}")
+                    else:
+                        print(f"Failed to download image for '{keyword}'")
+                else:
+                    print(f"No images generated for '{keyword}'")
             else:
-                print(f"No videos found for keyword: {keyword}")
-        else:
-            print(f"Failed to get videos for keyword: {keyword}")
-    return None
+                print(f"Failed to generate image for '{keyword}': {response.text}")
+                
+        except Exception as e:
+            print(f"Error generating image for '{keyword}': {str(e)}")
+    
+    return generated_images
 
-# Function to download the video
-def download_video(url, keyword):
-    video_data = requests.get(url)
-    print(f"Downloading video for keyword: {keyword}")
-    filename = f'{keyword}.mp4'
-    with open(filename, 'wb') as file:
-        file.write(video_data.content)
-    return filename
+
+def create_video_from_images(images, scene_id, duration=5):
+    """Create a video from generated images"""
+    if not images:
+        print(f"No images available for scene {scene_id}")
+        return None
+    
+    try:
+        video_clips = []
+        clip_duration = duration / len(images) if len(images) > 0 else duration
+        
+        for image_path in images:
+            if os.path.exists(image_path):
+                clip = ImageClip(image_path, duration=clip_duration)
+                clip = clip.resize((1080, 1920))  # Portrait orientation for YouTube Shorts
+                video_clips.append(clip)
+        
+        if video_clips:
+            final_clip = concatenate_videoclips(video_clips, method="compose")
+            video_filename = f'scene_{scene_id}_video.mp4'
+            final_clip.write_videofile(video_filename, codec="libx264", fps=24)
+            final_clip.close()
+            
+            # Clean up image files
+            for image_path in images:
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+            
+            print(f"Created video from images: {video_filename}")
+            return video_filename
+        else:
+            print(f"No valid images found for scene {scene_id}")
+            return None
+            
+    except Exception as e:
+        print(f"Error creating video from images for scene {scene_id}: {str(e)}")
+        return None
 
 # Function to generate scenarios using OpenAI API
 def generate_scenario(topic):
@@ -102,7 +168,7 @@ def generate_scenario(topic):
                             "properties": {
                                 "id": {"type": "integer"},
                                 "script": {"type": "string" , "description": "The script for the scene.MUST include only the text that will be spoken by the narrator"},
-                                "keywords": {"type": "string" , "description": "Relevant keywords for the video audiance which will be used to find a video on pexels , avoid words like 'inroduction' or 'conclusion'"},
+                                "keywords": {"type": "string" , "description": "Relevant keywords for image generation using AI, describe visual elements that would complement the narration"},
                             },            
                 },
             },
@@ -113,7 +179,7 @@ def generate_scenario(topic):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-2024-05-13",
              messages=[
         {"role": "system", "content": "You are youtube  creator. You are creating a 1mn video script for a given topic"},
         {"role": "user", "content":  topic},
@@ -137,14 +203,25 @@ if len(sys.argv) > 1:
     response = generate_scenario(topic)
     if response:
         json_response = json.loads(response)
+        
         for scene in json_response['scenes']:
-            video_filename = download_videos_from_pexels(scene['keywords'])
-            generate_audio_from_text(scene['script'], scene['id'])
+            # Get scene ID, handle different possible keys
+            scene_id = scene.get('id') or scene.get('scene_id') or len(scenes) + 1
+            
+            # Generate images using Fal API
+            generated_images = generate_images_from_fal(scene['keywords'], scene_id)
+            
+            # Generate audio
+            generate_audio_from_text(scene['script'], scene_id)
+            
+            # Create video from generated images
+            video_filename = create_video_from_images(generated_images, scene_id)
+            
             if video_filename:
-                scenes.append((video_filename, f"scene_{scene['id']}.mp3"))
-                print(f"Downloaded video for scene {scene['id']}: {video_filename}")
+                scenes.append((video_filename, f"scene_{scene_id}.mp3"))
+                print(f"Created video for scene {scene_id}: {video_filename}")
             else:
-                print(f"Could not download video for scene {scene['id']}")
+                print(f"Could not create video for scene {scene_id}")
         
         merged_clips = []
         for video_filename, audio_filename in scenes:
