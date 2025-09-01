@@ -1,0 +1,45 @@
+# YouTube Shorts Generator - Core Dependencies
+# Tested and working versions as of September 2025
+
+# Core libraries
+requests==2.32.5
+python-dotenv==1.1.1
+
+# OpenAI for script generation
+openai==1.102.0
+
+# MoviePy for video processing (specific version for PIL compatibility)
+moviepy==1.0.3
+decorator==4.4.2  # Required by moviepy 1.0.3
+
+# Video/Image processing dependencies
+imageio==2.37.0
+imageio-ffmpeg==0.6.0
+numpy==2.3.2
+pillow==11.3.0  # Latest version with our compatibility fix
+
+# Progress bar for video processing
+tqdm==4.67.1
+proglog==0.1.12
+
+# Additional moviepy dependencies
+scipy==1.16.0  # Required for some moviepy operations
+
+# HTTP client libraries (for API calls)
+certifi==2025.8.3
+charset-normalizer==3.4.3
+idna==3.10
+urllib3==2.5.0
+
+# OpenAI dependencies
+pydantic==2.11.7
+pydantic-core==2.33.2
+distro==1.9.0
+jiter==0.10.0
+anyio==4.9.0
+httpcore==1.0.9
+httpx==0.28.1
+sniffio==1.3.1
+typing-extensions==4.14.1
+annotated-types==0.7.0
+typing-inspection==0.4.1
