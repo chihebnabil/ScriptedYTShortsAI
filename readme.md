@@ -18,7 +18,21 @@ This script automates the creation of YouTube Shorts videos on a given topic. It
 - `moviepy`
 
 ## Setup Instructions
-1. **Install Dependencies:** Ensure Python 3.x is installed, then run `pip install requests python-dotenv openai moviepy`.
+
+### Option 1: Quick Setup (Recommended)
+Run the installation script:
+```bash
+./install.sh
+```
+
+### Option 2: Manual Setup
+1. **Install Dependencies:** Ensure Python 3.x is installed, then run:
+   ```bash
+   pip install -r requirements.txt
+   ```
+   
+   *Note: We use locked versions to ensure compatibility. The `requirements.txt` includes specific versions that have been tested and confirmed working together.*
+
 2. **Environment Variables:** Set up `.env` file with API keys:
    - `OPEN_API_KEY` for OpenAI.
    - `FAL_API_KEY` for Fal AI.
@@ -56,6 +70,12 @@ Run the script with a topic as an argument: `python main.py "Your Topic"`.
 - **✅ Replaced Pexels with Fal AI + Flux Schnell** for high-quality image generation
 - **✅ Added automatic video creation** from generated images  
 - **✅ Fixed compatibility issues** between MoviePy and newer Pillow versions
+- **✅ Locked dependency versions** in `requirements.txt` to prevent compatibility issues
+
+## Important Notes
+- **Dependency Versions:** This project uses specific library versions (see `requirements.txt`) that have been tested for compatibility. Using different versions may cause issues, particularly with MoviePy and Pillow.
+- **PIL Compatibility:** The code includes a compatibility fix for newer Pillow versions with older MoviePy.
+- **System Dependencies:** Make sure you have the required system libraries for image processing (automatically installed in most environments).
 
 ## Contributing
 Contributions to improve or extend the script are welcome. Please adhere to standard coding practices and provide documentation for any changes.
