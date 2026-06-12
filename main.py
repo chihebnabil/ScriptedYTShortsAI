@@ -1,5 +1,6 @@
 import requests
 import json
+import base64
 from dotenv import load_dotenv
 import os
 from openai import OpenAI
@@ -21,14 +22,31 @@ load_dotenv()
 openai_api_key = os.getenv("OPEN_API_KEY")
 fal_api_key = os.getenv("FAL_API_KEY")
 elevenlabs_api_key = os.getenv("ELVEN_LABS_API_KEY")
+db60_api_key = os.getenv("DB60_API_KEY")
+# Which TTS backend to use for the whole run: "elevenlabs" (default) or "60db"
+tts_provider = os.getenv("TTS_PROVIDER", "elevenlabs").lower()
+# Cache the 60db voice so every scene in a run uses the same voice (consistency)
+_db60_voice_id = None
 scenes = []
 
-def generate_audio_from_text(text, scene_id, voice_id = "21m00Tcm4TlvDq8ikWAM"):
+
+def generate_audio_from_text(text, scene_id):
+    """Generate a voiceover MP3 for `text`, dispatching to the configured TTS provider.
+
+    Both backends write the identical `scene_{scene_id}.mp3` so the rest of the
+    pipeline does not care which provider produced it. Returns True on success.
+    """
+    if tts_provider == "60db":
+        return generate_audio_60db(text, scene_id)
+    return generate_audio_elevenlabs(text, scene_id)
+
+
+def generate_audio_elevenlabs(text, scene_id, voice_id="21m00Tcm4TlvDq8ikWAM"):
+    """ElevenLabs TTS. Returns raw MP3 bytes written straight to disk."""
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     payload = {
         "model_id": "eleven_multilingual_v2",
-        "voice":"Bella",
         "text": text,
         "voice_settings": {
             "similarity_boost": 0.5,
@@ -44,11 +62,63 @@ def generate_audio_from_text(text, scene_id, voice_id = "21m00Tcm4TlvDq8ikWAM"):
 
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code == 200:
-        # downondld from response.text
         with open(f"scene_{scene_id}.mp3", "wb") as f:
             f.write(response.content)
+        return True
     else:
-        print(f"Failed to generate audio for scene {scene_id}: {response.text}")
+        print(f"Failed to generate audio (elevenlabs) for scene {scene_id}: {response.text}")
+        return False
+
+
+def get_db60_voice_id():
+    """Fetch the account's first available 60db voice once and cache it."""
+    global _db60_voice_id
+    if _db60_voice_id:
+        return _db60_voice_id
+
+    response = requests.get(
+        "https://api.60db.ai/myvoices",
+        headers={"Authorization": f"Bearer {db60_api_key}"},
+    )
+    response.raise_for_status()
+    voices = response.json().get("data", [])
+    if not voices:
+        raise RuntimeError("No 60db voices available on this account")
+
+    _db60_voice_id = voices[0]["voice_id"]
+    print(f"Using 60db voice: {voices[0].get('name')} ({_db60_voice_id})")
+    return _db60_voice_id
+
+
+def generate_audio_60db(text, scene_id):
+    """60db TTS. Returns JSON with base64 audio; settings mirror the ElevenLabs call."""
+    url = "https://api.60db.ai/tts-synthesize"
+
+    payload = {
+        "text": text,
+        "voice_id": get_db60_voice_id(),
+        "output_format": "mp3",   # keep output interchangeable with ElevenLabs
+        "stability": 50,          # 0.5 on ElevenLabs' 0-1 scale
+        "similarity": 50,         # 0.5 on ElevenLabs' 0-1 scale
+        "speed": 1.0,
+    }
+    headers = {
+        "Authorization": f"Bearer {db60_api_key}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        result = response.json()
+        if result.get("success") and result.get("audio_base64"):
+            with open(f"scene_{scene_id}.mp3", "wb") as f:
+                f.write(base64.b64decode(result["audio_base64"]))
+            return True
+        print(f"60db returned no audio for scene {scene_id}: {result.get('message')}")
+        return False
+    else:
+        print(f"Failed to generate audio (60db) for scene {scene_id}: {response.text}")
+        return False
 
 
 def generate_images_from_fal(keywords, scene_id):
@@ -210,16 +280,18 @@ if len(sys.argv) > 1:
             
             # Generate images using Fal API
             generated_images = generate_images_from_fal(scene['keywords'], scene_id)
-            
-            # Generate audio
-            generate_audio_from_text(scene['script'], scene_id)
-            
+
+            # Generate audio (ElevenLabs or 60db, per TTS_PROVIDER)
+            audio_ok = generate_audio_from_text(scene['script'], scene_id)
+
             # Create video from generated images
             video_filename = create_video_from_images(generated_images, scene_id)
-            
-            if video_filename:
+
+            if video_filename and audio_ok:
                 scenes.append((video_filename, f"scene_{scene_id}.mp3"))
                 print(f"Created video for scene {scene_id}: {video_filename}")
+            elif not audio_ok:
+                print(f"Skipping scene {scene_id}: audio generation failed")
             else:
                 print(f"Could not create video for scene {scene_id}")
         
